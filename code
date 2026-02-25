@@ -1,0 +1,79 @@
+#include <ESP8266WiFi.h>
+#include <Firebase_ESP_Client.h>
+
+// -------- WiFi --------
+#define WIFI_SSID "razr 40_5653"
+#define WIFI_PASSWORD "97641234"
+
+// -------- Firebase --------
+#define API_KEY "AIzaSyCYV_Dl-GvnypTQC2dmmw06NoPloamFwy4"
+#define DATABASE_URL "https://fire2-ac15f-default-rtdb.firebaseio.com"
+
+// -------- Pins --------
+#define MQ2_PIN A0
+#define BUZZER_PIN D6
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+int gasValue;
+int threshold = 700; // adjust after checking Serial Monitor
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, HIGH); // buzzer OFF (active-low)
+
+  // MQ-2 warm-up
+  Serial.println("MQ-2 warming up...");
+  delay(60000); // 60 seconds
+  Serial.println("MQ-2 ready");
+
+  // WiFi
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
+
+  // Firebase
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  config.signer.tokens.legacy_token = "6pfAOeanmqccPJGEhpj5Q38o4N3DePeaY7YPkPyx";
+
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  Serial.println("Firebase connected");
+}
+
+void loop() {
+  gasValue = analogRead(MQ2_PIN);
+
+  Serial.print("Gas Value: ");
+  Serial.println(gasValue);
+
+  // Send realtime gas data
+  Firebase.RTDB.setInt(&fbdo, "/fireNode1/gasLevel", gasValue);
+
+  if (gasValue > threshold) {
+    // FIRE / GAS DETECTED
+    digitalWrite(BUZZER_PIN, LOW); // buzzer ON
+
+    Firebase.RTDB.setBool(&fbdo, "/fireNode1/fireStatus", true);
+    Firebase.RTDB.setString(&fbdo, "/fireNode1/alertTime", "Fire Detected");
+  } 
+  else {
+    // SAFE CONDITION
+    digitalWrite(BUZZER_PIN, HIGH); // buzzer OFF
+
+    Firebase.RTDB.setBool(&fbdo, "/fireNode1/fireStatus", false);
+    Firebase.RTDB.setString(&fbdo, "/fireNode1/alertTime", "");
+  }
+
+  delay(1000);
+}
